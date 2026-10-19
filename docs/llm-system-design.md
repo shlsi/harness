@@ -264,7 +264,7 @@ class LLMError(Exception):
 
 - **优先**使用服务端返回的 `usage`（OpenAI 兼容接口都有）。
 - 流式场景：需在请求中带 `stream_options.include_usage`，末帧才有 usage。
-- 无 usage 时**只做粗略估算**（字符数 / 4），并在 `Usage` 上标记为估算值，不引入 tiktoken 依赖。
+- 无 usage 时**只做粗略估算**（中文≈1 字/token、ASCII≈4 字符/token、图片按固定值），并在 `Usage` 上标记为估算值，不引入 tiktoken 依赖。
 - 计量结果交给 Agent Loop 做 token 预算与裁剪决策。
 
 ---

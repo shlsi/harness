@@ -5,10 +5,10 @@ llm:
   api_key: ${OPENAI_API_KEY}
   base_url: https://api.agnes-ai.cn/v1
   timeout_s: 60
-  max_retries: 2
+  max_retries: 5
 agent:
-  max_steps: 12
-  max_total_tokens: 200000
+  max_steps: 200
+  max_total_tokens: 524288
   stream: true
   repeat_warn_at: 3
   repeat_stop_at: 6
@@ -50,9 +50,9 @@ tools:
     max_download_bytes: 20000000
 mcp:
   servers:
-    - name: parallel-search
-      transport: http
-      url: https://search.parallel.ai/mcp
+  - name: parallel-search
+    transport: http
+    url: https://search.parallel.ai/mcp
 observability:
   tracer_sink: jsonl
   tracer_path: data/traces.jsonl

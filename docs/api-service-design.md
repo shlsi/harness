@@ -153,7 +153,7 @@ server/
   "budget": {"max_total_tokens": 200000, "used_total_tokens": 3840, "remaining": 196160} }
 ```
 
-> **`context` 各段的 `tokens` 是估算值**（`estimate_tokens()`：字符数 / 4），仅用于展示与阈值判断，不追求精确。
+> **`context` 各段的 `tokens` 是估算值**（`estimate_tokens()`：中文≈1 字/token、ASCII≈4 字符/token、图片按固定值），仅用于展示与阈值判断，不追求精确。
 > `conversation_*` 只统计**固定头 + 活跃区**（即参与压缩判断的对话消息，不含固定区与压缩区）；
 > `total_tokens` 覆盖实际发给模型的全部消息（含固定区 / 压缩区）。
 > `budget` 来自会话累计用量（`usage_totals.total_tokens`）与 `agent.max_total_tokens` 预算。

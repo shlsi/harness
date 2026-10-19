@@ -140,7 +140,7 @@ session = await manager.open("demo-1")   # 事件重放恢复
 | `Session.compact(summary, dropped)` | 折叠活跃区头部为一条摘要 |
 | `Session.is_over_threshold(config)` | 水位线判断（条数 / 可选 token 估算） |
 | `Session.context(scopes=..., approval=..., ask=...)` | 产出带 `session_id` 的 `Context` |
-| `estimate_tokens(messages)` | 模块级公开函数：粗略估算 token（字符数 / 4），供阈值判断与前端展示 |
+| `estimate_tokens(messages)` | 模块级公开函数：粗略估算 token（中文≈1 字/token、ASCII≈4 字符/token、图片按固定值），供阈值判断与前端展示 |
 | `replay(session_id, events)` | 事件重放 → `Session`（累加 `usage` 事件进 `usage_totals`；旧日志无该事件 → 保持 0） |
 | `MemorySessionStore` / `JsonlSessionStore` | 两种存储（后者一行一事件，只追加） |
 | `SessionManager.create/open/list/delete` | 会话生命周期 |

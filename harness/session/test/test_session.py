@@ -20,6 +20,7 @@ from harness.llm import (
 )
 from harness.session import (
     EVENT_COMPACT,
+    IMAGE_TOKEN_ESTIMATE,
     SUMMARY_PREFIX,
     CompressionResult,
     JsonlSessionStore,
@@ -31,6 +32,7 @@ from harness.session import (
     SessionManager,
     SessionNotFound,
     TitleGenerator,
+    estimate_tokens,
     fallback_title,
     replay,
     split_summary_and_memories,
@@ -510,6 +512,16 @@ def test_token_threshold():
     config = SessionConfig(compact_threshold=1000, max_active_tokens=10)
     session.append(Message.user("x" * 200))  # 约 50 token
     assert session.is_over_threshold(config) is True
+
+
+def test_estimate_tokens_weighs_cjk_and_ignores_image_base64():
+    # 非 ASCII（中文）≈ 1 token/字；ASCII ≈ 4 字符/token
+    assert estimate_tokens([Message.user("帮我看看")]) == 4
+    assert estimate_tokens([Message.user("abcdefgh")]) == 2
+    # 内联 base64 图片不按长度算：只算文本片段 + 固定图片估计
+    huge = "data:image/png;base64," + "A" * 500_000
+    message = Message.user("看图", images=[huge])
+    assert estimate_tokens([message]) == 2 + IMAGE_TOKEN_ESTIMATE
 
 
 # ---- M5：压缩时顺带抽取长期记忆 ----

@@ -200,7 +200,7 @@ class Session:
 
 # 模块级公开函数
 def estimate_tokens(messages: Iterable[Message]) -> int: ...
-    """粗略估算 token 数（字符数 / 4），仅用于阈值判断与前端展示，不追求精确。"""
+    """粗略估算 token 数（中文≈1 字/token、ASCII≈4 字符/token、图片按固定值），仅用于阈值判断与前端展示，不追求精确。"""
 ```
 
 > `estimate_tokens()` 由模块级公开导出（`harness.session.estimate_tokens`），

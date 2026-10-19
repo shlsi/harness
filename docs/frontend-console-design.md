@@ -180,7 +180,7 @@ localStorage 键（前缀 `harness.`）：`sid`（上次会话）、`theme`、`t
 - 权限档位 → scopes / 审批：由后端 `harness/tool/permission.py` 单点映射（前端只传档位名，不拼 scopes）
 - 工作区 → 沙箱边界：由后端 `session_sandbox()` 构造 `SandboxPolicy`（前端只传目录路径）
 - 距压缩阈值：由后端算好 `remaining_messages` / `remaining_tokens`
-- token **估算**：`estimate_tokens()` 在后端（字符数 / 4）；前端只展示，且文案明确写「估算值」
+- token **估算**：`estimate_tokens()` 在后端（中文≈1 字/token、ASCII≈4 字符/token、图片按固定值）；前端只展示，且文案明确写「估算值」
 - 「配置写了什么」与「运行时真正用什么」：`GET /config` 的 `config`（脱敏原始 YAML，可编辑）与 `effective`（运行时生效值，只读）分列展示
 - 插话续发：前端**不自行判断该不该打断**（是否打断由后端探测），只消费 `done.interrupts`；合并顺序固定为「先旧的（本地残留队列）、后新收的（本轮 `interrupts`）」，并**每次只续发队首一条**、其余留队列等下一轮 `done`；`stop_reason === 'cancelled'` 时后端刻意不回传 `interrupts`，前端一并清空队列、不续发
 

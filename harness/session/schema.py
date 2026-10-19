@@ -26,6 +26,9 @@ USAGE_KEYS = ("prompt_tokens", "completion_tokens", "total_tokens")
 # 压缩区摘要消息的前缀标记
 SUMMARY_PREFIX = "[此前对话摘要]"
 
+#: 图片片段的固定 token 估计（不按 base64 / URL 长度算）。
+IMAGE_TOKEN_ESTIMATE = 256
+
 
 class SessionError(Exception):
     """会话模块异常基类。"""
@@ -130,18 +133,39 @@ class SessionConfig:
     title_max_chars: int = 24  # 生成标题的字数上限
 
 
+def _weigh_text(text: str) -> int:
+    """按字符类别估 token：ASCII（英文/代码/数字）≈ 4 字符 1 token；非 ASCII（中文等）≈ 1 字符 1 token。
+
+    旧实现是朴素的「字符数 // 4」，对纯英文/代码尚可，但对中文会低估约 4 倍。
+    """
+    ascii_count = sum(1 for ch in text if ch.isascii())
+    other = len(text) - ascii_count
+    return ascii_count // 4 + other
+
+
 def estimate_tokens(messages: Iterable[Message]) -> int:
-    """粗略估算（字符数 / 4），仅用于阈值判断与前端展示，不追求精确。"""
+    """粗略估算 token，仅用于阈值判断与前端展示，不追求精确。
+
+    - ASCII（英文/代码/数字）≈ 4 字符 1 token；非 ASCII（中文等）≈ 1 字符 1 token；
+    - 图片片段（`image_url`）按 [`IMAGE_TOKEN_ESTIMATE`] 固定估，**不按 base64 长度算**
+      （否则一张内联图片会被算出十几万 token）。
+    """
     total = 0
     for message in messages:
         content = message.content
         if isinstance(content, str):
-            total += len(content)
+            total += _weigh_text(content)
         elif isinstance(content, list):
-            total += sum(len(str(part)) for part in content)
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "image_url":
+                    total += IMAGE_TOKEN_ESTIMATE
+                elif isinstance(part, dict):
+                    total += _weigh_text(str(part.get("text") or ""))
+                else:
+                    total += _weigh_text(str(part))
         for call in message.tool_calls or []:
-            total += len(call.arguments)
-    return total // 4
+            total += _weigh_text(call.arguments or "")
+    return total
 
 
 def _messages_after(all_messages: list[Message], sent: list[Message]) -> list[Message]:
