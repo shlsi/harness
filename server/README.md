@@ -151,7 +151,7 @@ lifespan 还负责模型连接的**预热 / 空闲保活**（`state.start_warmup
 |---|---|---|
 | 用量 | 本轮 token、会话累计 `usage_totals`、`max_total_tokens` 预算 | `GET /sessions/{id}` |
 | 配置 | `config`（可编辑）+ `effective`（只读）分列、模型连通性测试、保存 / 重载 | `GET/PUT /config`、`POST /config/reload`、`POST /llm/ping` |
-| MCP | 结构化表单增删改 `mcp.servers`、逐条「测试连接」、保存即重连；**卡片开关一键启用 / 停用**（只翻 `enabled` 并就近重连，不必保存） | `GET /mcp`、`POST /mcp/test`、`POST /mcp/reload`、`PATCH /mcp/{name}` |
+| MCP | 结构化表单增删改 `mcp.servers`、**「粘贴 JSON」导入 Claude/Cursor 风格的 `mcpServers`（同名覆盖、其余追加，仅填充表单）**、逐条「测试连接」、保存即重连；**卡片开关一键启用 / 停用**（只翻 `enabled` 并就近重连，不必保存） | `GET /mcp`、`POST /mcp/test`、`POST /mcp/reload`、`PATCH /mcp/{name}` |
 | 技能 | 技能列表 + 编辑器（新建 / 编辑 / 删除）、**逐条启用 / 停用开关**、**zip 上传（冲突时确认后覆盖）**、草稿校验、目录级 lint、重新扫描 | `GET/POST /skills`、`GET/PUT/DELETE /skills/{name}`、`PATCH /skills/{name}`、`POST /skills/upload`、`POST /skills/validate`、`GET /skills/lint`、`POST /skills/reload` |
 | 工具 | 工具列表与启停（改 `config.tools.disabled` 后 `PUT /config`） | `GET /tools`、`PUT /config` |
 | 记忆 | `MEMORY.md` 整文编辑 | `GET/PUT /memory` |

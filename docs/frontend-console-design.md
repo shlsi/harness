@@ -16,7 +16,7 @@
 - **用量**：本轮 token、会话累计 token、`max_total_tokens` 预算
 - **上下文**：四段分区（system / head / summary / active）的条数与**估算** token、距压缩阈值、手动压缩
 - **配置中心**：读写 `harness.yaml` 并**重建运行时**（模型、压缩参数、agent 参数、工具开关…）
-- **MCP 管理**：结构化表单增删改 `mcp.servers`、逐条「测试连接」、保存即重连、**逐 server 启用/停用开关**（per-card，即改即生效）
+- **MCP 管理**：结构化表单增删改 `mcp.servers`、**「粘贴 JSON」批量导入**（兼容 `mcpServers` / 数组 / 单个 server，兼容 `type`→transport，仅填充表单，需再点「保存并重连」落盘）、逐条「测试连接」、保存即重连、**逐 server 启用/停用开关**（per-card，即改即生效）
 - **技能管理**：技能全 CRUD（新建 / 编辑 / 删除）、**zip 上传**（含冲突覆盖确认）、**逐技能启用/停用开关**、草稿校验（lint）、目录级 lint、重新扫描
 - **运维**：工具启停、长期记忆编辑、调用链（span 树）、服务状态
 
@@ -128,7 +128,7 @@ localStorage 键（前缀 `harness.`）：`sid`（上次会话）、`theme`、`t
 | 配置读写 | `GET /config`、`PUT /config` `{config, reload}`、`POST /config/reload` |
 | 模型连通性测试 | `POST /llm/ping` |
 | 工具 / 启停 | `GET /tools`；启停＝改 `config.tools.disabled` 后 `PUT /config` |
-| MCP 列表 / 编辑 | `GET /mcp`；编辑＝改 `config.mcp.servers` 后 `PUT /config` `{reload:true}` |
+| MCP 列表 / 编辑 | `GET /mcp`；编辑＝改 `config.mcp.servers` 后 `PUT /config` `{reload:true}`（「粘贴 JSON」只填表单，不新增端点） |
 | MCP 启用 / 停用 | `PATCH /mcp/{name}` `{enabled}`（即改即生效，不重建部件；前端随后刷新工具表） |
 | MCP 测试连接 | `POST /mcp/test` `{server}` → `{ok, tools, latency_ms, error}` |
 | MCP 重连 | `POST /mcp/reload` |

@@ -381,6 +381,27 @@ function confirmDialog(message, detail = '') {
     document.body.appendChild(box);
   });
 }
+/* 多行 JSON 输入弹窗：确认返回文本，取消返回 null */
+function jsonDialog(title, hint, placeholder = '') {
+  return new Promise(resolve => {
+    const box = document.createElement('div');
+    box.className = 'overlay';
+    box.innerHTML = `<div class="dialog" style="max-width:560px">
+      <h3></h3><div class="muted small" data-hint></div>
+      <textarea data-json rows="12" spellcheck="false"
+        style="width:100%;margin-top:8px;font-size:12.5px"></textarea>
+      <div class="row"><button class="btn" data-no>取消</button><button class="btn primary" data-yes>导入</button></div></div>`;
+    box.querySelector('h3').textContent = title;
+    box.querySelector('[data-hint]').textContent = hint;
+    const ta = box.querySelector('[data-json]');
+    ta.placeholder = placeholder;
+    box.querySelector('[data-no]').onclick = () => { box.remove(); resolve(null); };
+    box.querySelector('[data-yes]').onclick = () => { const v = ta.value; box.remove(); resolve(v); };
+    box.onclick = e => { if (e.target === box) { box.remove(); resolve(null); } };
+    document.body.appendChild(box);
+    ta.focus();
+  });
+}
 
 /* ---- 零依赖安全 Markdown（先转义，后替换）---- */
 function mdInline(s) {
@@ -1539,6 +1560,79 @@ function _readMcpForm() {
   }
   return servers;
 }
+
+/* ---- 粘贴 JSON 导入 MCP server ---- */
+// 只保留后端 McpServerConfig 认识的字段；不认识的（如 headers）会被忽略
+const MCP_SERVER_KEYS = ['name', 'enabled', 'transport', 'command', 'args', 'env', 'cwd', 'url',
+  'tool_prefix', 'default_side_effect', 'default_requires_approval', 'default_scopes',
+  'default_timeout_s', 'tool_overrides'];
+function _normalizeMcpServer(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new ApiError('invalid_server', '每个 server 必须是一个 JSON 对象');
+  }
+  const out = {};
+  for (const k of MCP_SERVER_KEYS) if (raw[k] !== undefined && raw[k] !== null) out[k] = raw[k];
+  out.name = String(out.name || '').trim();
+  if (!out.name) throw new ApiError('invalid_server', '缺少 name');
+  // 兼容 Claude / Cursor 风格：type（http/sse/streamable-http）→ transport；有 url 即 http
+  const type = String(raw.type || raw.transport || '').toLowerCase();
+  const isHttp = ['http', 'sse', 'streamable-http', 'streamable_http'].includes(type) || !!raw.url;
+  if (!out.transport) out.transport = isHttp ? 'http' : 'stdio';
+  if (raw.disabled === true) out.enabled = false;
+  // 轻量类型矫正，避免后端 coerce 报错
+  if (out.args != null && !Array.isArray(out.args)) out.args = String(out.args).split(/\s+/).filter(Boolean);
+  if (out.env != null && (typeof out.env !== 'object' || Array.isArray(out.env))) out.env = {};
+  if (out.default_scopes != null && !Array.isArray(out.default_scopes)) out.default_scopes = [];
+  if (out.tool_overrides != null && (typeof out.tool_overrides !== 'object' || Array.isArray(out.tool_overrides))) out.tool_overrides = {};
+  // 与后端一致的必填校验，提前报错（别等 PUT /config 才失败）
+  if (out.transport === 'http' && !out.url) throw new ApiError('invalid_server', `「${out.name}」transport=http 但缺少 url`);
+  if (out.transport === 'stdio' && !out.command) throw new ApiError('invalid_server', `「${out.name}」transport=stdio 但缺少 command`);
+  return out;
+}
+function _parseMcpJson(text) {
+  const data = JSON.parse(text);
+  const found = [];
+  const fromMap = obj => {
+    for (const [name, cfg] of Object.entries(obj || {})) {
+      if (cfg && typeof cfg === 'object' && !Array.isArray(cfg)) found.push({ ...cfg, name: cfg.name || name });
+    }
+  };
+  const fromList = list => { for (const item of list) found.push({ ...(item || {}) }); };
+  if (Array.isArray(data)) {
+    fromList(data);
+  } else if (data && typeof data === 'object') {
+    if (data.mcpServers && typeof data.mcpServers === 'object') fromMap(data.mcpServers);
+    else if (data.mcp && typeof data.mcp === 'object' && data.mcp.servers) {
+      Array.isArray(data.mcp.servers) ? fromList(data.mcp.servers) : fromMap(data.mcp.servers);
+    } else if (Array.isArray(data.servers)) fromList(data.servers);
+    else if (data.servers && typeof data.servers === 'object') fromMap(data.servers);
+    else found.push({ ...data });  // 单个 server 对象
+  }
+  if (!found.length) throw new ApiError('invalid_json', '没解析出任何 MCP server');
+  return found.map(_normalizeMcpServer);
+}
+async function importMcpJson() {
+  const text = await jsonDialog(
+    '粘贴 MCP 配置（JSON）',
+    '支持：{"mcpServers":{…}} / {"mcp":{"servers":[… …]}} / 数组 / 单个 server。同名覆盖、其余追加；'
+      + '不认识的字段（如 headers）会被忽略。导入后点「保存并重连」才生效。',
+    '{\n  "mcpServers": {\n    "parallel-search": { "url": "https://search.parallel.ai/mcp" }\n  }\n}'
+  );
+  if (text == null || !text.trim()) return;
+  try {
+    const imported = _parseMcpJson(text);
+    const cur = _readMcpForm();
+    const incoming = new Map(imported.map(s => [s.name, s]));
+    const existing = new Set(cur.map(s => s.name));
+    const merged = cur.map(s => incoming.has(s.name) ? incoming.get(s.name) : s);
+    for (const s of imported) if (!existing.has(s.name)) merged.push(s);
+    S.config.mcp = { ...(S.config.mcp || {}), servers: merged };
+    loadMcpPanel();
+    toast(`已导入 ${imported.length} 个 server，点「保存并重连」生效`);
+  } catch (e) {
+    toast(e instanceof SyntaxError ? `JSON 解析失败：${e.message}` : e.message, 'error');
+  }
+}
 async function saveMcp() {
   if (!S.config) return toast('配置不可用，无法保存 MCP', 'error');
   let servers;
@@ -1681,6 +1775,9 @@ async function loadMcpPanel() {
       loadMcpPanel();
     } catch (e) { toast(e.message, 'error'); }
   };
+  const paste = document.createElement('button');
+  paste.className = 'btn'; paste.textContent = '粘贴 JSON';
+  paste.onclick = importMcpJson;
   const save = document.createElement('button');
   save.className = 'btn primary'; save.textContent = '保存并重连';
   save.onclick = saveMcp;
@@ -1695,12 +1792,14 @@ async function loadMcpPanel() {
       loadMcpPanel();
     } catch (e) { toast(e.message, 'error'); }
   };
-  bar.append(add, save, reload);
+  bar.append(add, paste, save, reload);
   wrap.appendChild(bar);
 
   const note = document.createElement('div');
   note.className = 'small muted';
-  note.textContent = '保存会写回 harness.yaml 的 mcp.servers 并重建工具表；stdio 需 command，http 需 url。卡片左上角的开关只翻 enabled 一个字段并就近重连，不必保存。';
+  note.textContent = '保存会写回 harness.yaml 的 mcp.servers 并重建工具表；stdio 需 command，http 需 url。'
+    + '「粘贴 JSON」可导入 Claude / Cursor 风格的 mcpServers 配置（同名覆盖、其余追加）。'
+    + '卡片左上角的开关只翻 enabled 一个字段并就近重连，不必保存。';
   wrap.appendChild(note);
 
   el.innerHTML = ''; el.appendChild(wrap);
