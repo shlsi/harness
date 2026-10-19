@@ -13,7 +13,7 @@ from pathlib import Path
 import httpx
 
 from harness.agent import LoopConfig, PromptBuilder
-from harness.config import JsonlTracerSink, load_config
+from harness.config import HarnessConfig, JsonlTracerSink, load_config
 from harness.llm import ChatResponse, FakeProvider, Message, ToolCall, Usage
 from harness.memory import MemoryStore, register_memory_tools
 from harness.session import LLMCompressor, MemorySessionStore, SessionManager
@@ -1895,6 +1895,50 @@ def test_non_stream_interrupt_returns_202():
             gate.set()
             await asyncio.wait_for(run.done.wait(), timeout=5)
         await state.aclose()
+
+    _run(scenario())
+
+
+def test_warmup_and_keepalive_tasks():
+    """预热：一次 max_tokens=1 的 mini 调用（默认关闭，显式开启才跑）；保活任务按 keepalive_s 起停。"""
+
+    async def scenario():
+        provider = FakeProvider([_text("pong")])
+        state = AppState(
+            provider=provider,
+            registry=_registry(),
+            manager=SessionManager(MemorySessionStore(), compressor=LLMCompressor(provider)),
+            loop_config=LoopConfig(stream=True),
+            config=HarnessConfig(),
+        )
+        await state.warm_provider()
+        assert len(provider.requests) == 1
+        assert provider.requests[0].max_tokens == 1  # 最小调用，不浪费配额
+
+        # 默认 keepalive_s=0 → 不启动任务
+        state.start_keepalive()
+        assert state._keepalive is None
+
+        # >0 → 启动任务；停掉后清理干净
+        state.config.server.keepalive_s = 120.0
+        state.start_keepalive()
+        assert state._keepalive is not None
+        state.stop_keepalive()
+        assert state._keepalive is None
+
+        # 默认 warmup_on_start=False → 不预热
+        state.start_warmup()
+        await asyncio.sleep(0.05)
+        assert len(provider.requests) == 1
+
+        # 显式开启 → 后台再打一次
+        state.config.server.warmup_on_start = True
+        state.start_warmup()
+        await asyncio.sleep(0.05)
+        assert len(provider.requests) == 2
+
+        await state.aclose()
+        assert state._keepalive is None
 
     _run(scenario())
 

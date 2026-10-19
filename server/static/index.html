@@ -56,9 +56,18 @@ aside,main{min-width:0;min-height:0}
 .session-item .t{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   display:flex;align-items:center;gap:6px}
 .session-item .m{font-size:11.5px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.session-item .acts{display:flex;gap:2px;margin-left:auto;opacity:0;transition:opacity .12s}
+.session-item:hover .acts,.session-item.active .acts{opacity:1}
+.session-item .acts .btn{padding:1px 6px;font-size:11.5px;line-height:1.3}
 .pulse{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 rgba(21,128,61,.5);
   animation:pulse 1.6s infinite}
 @keyframes pulse{to{box-shadow:0 0 0 8px rgba(21,128,61,0)}}
+.pending-msg .typing{display:inline-flex;gap:4px;align-items:center}
+.pending-msg .typing i{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:typing 1.1s infinite ease-in-out}
+.pending-msg .typing i:nth-child(2){animation-delay:.15s}
+.pending-msg .typing i:nth-child(3){animation-delay:.3s}
+.pending-msg .pending-note{margin-left:8px;color:var(--muted);font-size:12.5px}
+@keyframes typing{0%,70%,100%{opacity:.22;transform:translateY(0)}35%{opacity:1;transform:translateY(-2px)}}
 .side-foot{padding:var(--sp2) var(--sp3);border-top:1px solid var(--line);display:flex;gap:var(--sp2);align-items:center;
   font-size:12px;color:var(--muted);flex-wrap:wrap}
 
@@ -651,6 +660,14 @@ function renderSessionList() {
     span.style.textOverflow = 'ellipsis'; span.textContent = s.title || `会话 ${s.session_id.slice(0, 8)}`;
     t.appendChild(span);
     if (s.active_run_id) { const p = document.createElement('span'); p.className = 'pulse'; t.appendChild(p); }
+    const acts = document.createElement('span'); acts.className = 'acts';
+    const rn = document.createElement('button'); rn.className = 'btn xs icon'; rn.textContent = '✎'; rn.title = '重命名';
+    const dl = document.createElement('button'); dl.className = 'btn xs icon'; dl.textContent = '✕'; dl.title = '删除';
+    rn.onclick = (e) => { e.stopPropagation(); startRename(li, s); };
+    dl.onclick = (e) => { e.stopPropagation(); deleteCurrentOr(s.session_id); };
+    rn.ondblclick = (e) => e.stopPropagation();
+    dl.ondblclick = (e) => e.stopPropagation();
+    acts.append(rn, dl); t.appendChild(acts);
     const m = document.createElement('div'); m.className = 'm';
     m.innerHTML = `<span>${s.turns || 0} 轮</span><span>${fmtTime(s.updated_at)}</span>`;
     if (s.usage_totals) m.innerHTML += `<span>${fmtNum(s.usage_totals.total_tokens)} tok</span>`;
@@ -661,7 +678,7 @@ function renderSessionList() {
   }
 }
 async function newSession() {
-  S.sessionId = null; S.runId = null; S.lastSeq = 0; S.detail = null;
+  S.sessionId = null; S.runId = null; S.lastSeq = 0; S.detail = null; clearPending();
   localStorage.removeItem(LS.sid);
   $('#chatTitle').textContent = '新会话';
   $('#runStatus').textContent = '';
@@ -695,7 +712,7 @@ async function ensureSession() {
 }
 async function openSession(id) {
   if (S.sessionId === id && S.detail) { closeSidebarOnMobile(); return; }
-  S.sessionId = id; S.lastSeq = 0; S.runId = null; S.usageTurn = null;
+  S.sessionId = id; S.lastSeq = 0; S.runId = null; S.usageTurn = null; clearPending();
   localStorage.setItem(LS.sid, id);
   closeSidebarOnMobile();
   $('#log').innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
@@ -790,12 +807,26 @@ async function send() {
     }
     streamRun(handle.run_id);
   } catch (e) {
+    clearPending();
     if (e.code === 'run_conflict') { toast('该会话的上一轮正在收尾，请稍后重试', 'warn'); }
     else toast('发送失败：' + e.message, 'error');
   }
 }
 
-let _es = null, _retry = 0, _assistantEl = null, _assistantText = '';
+let _es = null, _retry = 0, _assistantEl = null, _assistantText = '', _pendingEl = null;
+/* 首字到达前的占位反馈：模型 TTFB 可能长达数秒，期间不能让界面「死寂」 */
+function showPending(label) {
+  if (_pendingEl) return;
+  _pendingEl = bubble('assistant', '');
+  _pendingEl.classList.add('pending-msg');
+  const body = _pendingEl.querySelector('.body');
+  body.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>';
+  const note = document.createElement('span');
+  note.className = 'pending-note'; note.textContent = label || '正在等待模型响应…';
+  body.appendChild(note);
+  const log = $('#log'); log.appendChild(_pendingEl); log.scrollTop = log.scrollHeight;
+}
+function clearPending() { if (_pendingEl) { _pendingEl.remove(); _pendingEl = null; } }
 function setRunning(on) {
   S.running = on;
   // 运行中**不禁用**发送：再发一条就是软打断（提问会排到当前工具执行完之后）
@@ -832,7 +863,7 @@ async function drainInterrupts(list) {
 function streamRun(runId, { resume = false } = {}) {
   if (_es) { _es.close(); _es = null; }
   S.runId = runId; S.lastRunId = runId;
-  if (!resume) { S.lastSeq = 0; _assistantEl = null; _assistantText = ''; }
+  if (!resume) { S.lastSeq = 0; _assistantEl = null; _assistantText = ''; showPending('正在等待模型响应…'); }
   setRunning(true);
   $('#runStatus').textContent = '运行中…';
   const url = `/runs/${runId}/events?after=${S.lastSeq}`;
@@ -847,6 +878,7 @@ function streamRun(runId, { resume = false } = {}) {
 
   on('run_started', () => { _retry = 0; $('#runStatus').textContent = '运行中…'; });
   on('text_delta', (d) => {
+    clearPending();
     if (!_assistantEl) {
       _assistantEl = bubble('assistant', '', { streaming: true });
       $('#log').appendChild(_assistantEl);
@@ -857,9 +889,11 @@ function streamRun(runId, { resume = false } = {}) {
     $('#log').scrollTop = $('#log').scrollHeight;
   });
   on('message', (d) => {
+    clearPending();
     if (d.text && !_assistantText) { _assistantText = d.text; }
   });
   on('tool_finished', (d) => {
+    clearPending();
     const items = (d.tool_results || []).map(r => ({ name: r.name, tool_call_id: r.tool_call_id, content: r.content }));
     if (items.length) {
       if (_assistantEl) { _assistantEl.classList.remove('streaming'); _assistantEl = null; _assistantText = ''; }
@@ -868,11 +902,13 @@ function streamRun(runId, { resume = false } = {}) {
     }
   });
   on('interaction_required', (d) => {
+    clearPending();
     if (_assistantEl) { _assistantEl.classList.remove('streaming'); _assistantEl = null; _assistantText = ''; }
     $('#log').appendChild(interactionCard(d));
     $('#log').scrollTop = $('#log').scrollHeight;
   });
   on('run_error', (d) => {
+    clearPending();
     const err = (d && d.error) || {};
     const box = bubble('system', '');
     box.classList.add('system');
@@ -880,6 +916,7 @@ function streamRun(runId, { resume = false } = {}) {
     $('#log').appendChild(box);
   });
   on('done', (d) => {
+    clearPending();
     if (_assistantEl) {
       _assistantEl.classList.remove('streaming');
       if (_assistantText) setRich(_assistantEl.querySelector('.body'), _assistantText);

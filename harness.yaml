@@ -64,3 +64,5 @@ server:
   heartbeat_s: 15
   interaction_timeout_s: 300
   run_ttl_s: 600
+  warmup_on_start: false
+  keepalive_s: 0

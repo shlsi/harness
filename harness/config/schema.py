@@ -138,6 +138,11 @@ class ServerConfig:
     heartbeat_s: float = 15.0
     interaction_timeout_s: float = 300.0
     run_ttl_s: float = 600.0
+    # 启动后预热一次模型连接（建好 TLS/连接池）。**只对支持前缀缓存的 provider 才有意义**，
+    # 对不做缓存的 provider（如 agnes）收益被 prefill 延迟淹没，故默认关闭。
+    warmup_on_start: bool = False
+    # 空闲保活间隔（秒）：>0 时每隔该时长、且**无活跃 run**时打一次 mini ping。0 = 关闭
+    keepalive_s: float = 0.0
 
 
 @dataclass

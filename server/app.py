@@ -52,7 +52,12 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        await harness_state.start()  # 连接配置中的 MCP server
+        try:
+            await harness_state.start()  # 连接配置中的 MCP server
+        except Exception as exc:  # noqa: BLE001 - MCP 不可用（宕机/限流/缺 key）不该拖垮整个服务
+            print(f"[warn] MCP 连接失败，服务照常启动（该 server 的工具暂不可用）：{exc}")
+        harness_state.start_warmup()  # 预热模型连接（降低首条消息 TTFB）
+        harness_state.start_keepalive()  # 空闲保活（server.keepalive_s > 0 时）
         yield
         await harness_state.aclose()
 

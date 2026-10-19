@@ -30,7 +30,7 @@ from harness.config import (
     build_tracer,
 )
 from harness.config.admin import dump_raw, ordered_config, read_yaml, validate
-from harness.llm import LLMProvider
+from harness.llm import ChatRequest, LLMProvider, Message
 from harness.memory import MemoryStore
 from harness.session import SessionManager, TitleGenerator
 from harness.skill import SkillRegistry
@@ -139,6 +139,8 @@ class AppState:
         self.title_namer = title_namer
         # 后台任务（如自动标题）；配置重建 / 关闭时统一取消
         self.background: set[asyncio.Task] = set()
+        # 空闲保活任务（独立于 background：配置重建时要按新间隔重启）
+        self._keepalive: asyncio.Task | None = None
 
     def _enabled_mcp_configs(self) -> list[MCPServerConfig]:
         """只连 `enabled: true` 的声明。
@@ -162,6 +164,50 @@ class AppState:
         configs = self._enabled_mcp_configs()
         if configs:
             self.loaded_servers = await load_mcp_servers(configs, self.registry)
+
+    # ---- 模型连接预热 / 空闲保活（降低首条消息 TTFB，见 docs/api-service-design.md）----
+    async def warm_provider(self) -> None:
+        """预热一次模型连接：建好连接池 + 触发 provider 侧缓存。
+
+        失败**静默**——预热是锦上添花，不该影响服务可用性。
+        """
+        try:
+            await self.provider.complete(
+                ChatRequest(messages=[Message.user("ping")], max_tokens=1)
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    def start_warmup(self) -> None:
+        """启动时预热一次（受 `server.warmup_on_start` 控制；注入的测试 state 无 config → 跳过）。"""
+        if self.config is None or not self.config.server.warmup_on_start:
+            return
+        task = asyncio.create_task(self.warm_provider())
+        self.background.add(task)
+        task.add_done_callback(self.background.discard)
+
+    def start_keepalive(self) -> None:
+        """按 `server.keepalive_s` 启动空闲保活；<=0 关闭。先停旧的，便于配置热重建后按新间隔重启。"""
+        self.stop_keepalive()
+        interval = self.config.server.keepalive_s if self.config is not None else 0.0
+        if interval <= 0:
+            return
+        self._keepalive = asyncio.create_task(self._keepalive_loop(float(interval)))
+
+    def stop_keepalive(self) -> None:
+        if self._keepalive is not None:
+            self._keepalive.cancel()
+            self._keepalive = None
+
+    async def _keepalive_loop(self, interval: float) -> None:
+        try:
+            while True:
+                await asyncio.sleep(interval)
+                # 有 run 在跑时不动——进行中的请求本身就是最好的保活
+                if self.runs.active_count() == 0:
+                    await self.warm_provider()
+        except asyncio.CancelledError:
+            raise
 
     # ---- 轻量开关（只翻一个字段 + 只热重建对应部分）----
     async def patch_config(self, mutate: Callable[[dict[str, Any]], None]) -> HarnessConfig:
@@ -250,6 +296,7 @@ class AppState:
         self.config = config
         self.runs.set_ttl(config.server.run_ttl_s)
         self.interactions.set_timeout(config.server.interaction_timeout_s)
+        self.start_keepalive()  # 按新配置的间隔重启空闲保活（<=0 时等于关闭）
 
         warnings: list[str] = []
         if reload_mcp:
@@ -279,6 +326,7 @@ class AppState:
         return []
 
     async def aclose(self) -> None:
+        self.stop_keepalive()
         for task in list(self.background):
             task.cancel()
         self.background.clear()

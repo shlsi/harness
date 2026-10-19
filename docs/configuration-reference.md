@@ -39,7 +39,7 @@ memory: {enabled: true, path: MEMORY.md, max_chars: 4000, auto_extract: false}
 tools: {enabled: [], disabled: [], policy: {enforce_scopes: true, approval_for_destructive: true}, shell: {allowed_commands: [], deny_patterns: []}, sandbox: {enabled: false, root: ., write_paths: [], deny_paths: [], readonly_mounts: [], writable_mounts: [], denied_domains: []}, net: {max_bytes: 200000, max_download_bytes: 20000000}}
 mcp: {servers: []}
 observability: {tracer_sink: jsonl, tracer_path: data/traces.jsonl, tracer_max_spans: 500}
-server: {host: 127.0.0.1, port: 8000, data_dir: data/sessions, heartbeat_s: 15, interaction_timeout_s: 300, run_ttl_s: 600}
+server: {host: 127.0.0.1, port: 8000, data_dir: data/sessions, heartbeat_s: 15, interaction_timeout_s: 300, run_ttl_s: 600, warmup_on_start: false, keepalive_s: 0}
 ```
 
 上面这种「一段一行」的写法紧凑好读；控制台回写时会把键序规范化。若你更习惯缩进展开的多行写法，展开后与它完全等价（例如本仓库当前文件就是展开形式）。9 段各自的字段含义、默认值与可否修改见 §3、§5。
@@ -169,6 +169,8 @@ server: {host: 127.0.0.1, port: 8000, data_dir: data/sessions, heartbeat_s: 15, 
 | `heartbeat_s` | float | `15.0` | 心跳间隔 | 重载即可 | ❌ |
 | `interaction_timeout_s` | float | `300.0` | 交互（审批/提问）超时 | 重载即可 | ❌ |
 | `run_ttl_s` | float | `600.0` | run 记录保留时长 | 重载即可 | ❌ |
+| `warmup_on_start` | bool | `false` | 启动后预热一次模型连接（省 TLS/连接池建立）。**仅对支持前缀缓存的 provider 有意义** | 重载即可 | ❌ |
+| `keepalive_s` | float | `0.0` | 空闲保活间隔；`>0` 时每隔该时长、且无活跃 run 时打一次 mini ping。`0`=关闭 | 重载即可 | ❌ |
 
 ---
 
@@ -215,7 +217,7 @@ server: {host: 127.0.0.1, port: 8000, data_dir: data/sessions, heartbeat_s: 15, 
 | `tools.policy.*` | `enforce_scopes` / `approval_for_destructive`，同上 |
 | `tools.shell.*` | 命令白名单 / 禁止模式，放宽即可**跑任意命令** |
 | `observability.*` | 审计 sink，改掉即**抹掉痕迹** |
-| `server.*` | `host` / `port` / `data_dir` / `heartbeat_s` / `interaction_timeout_s` / `run_ttl_s` |
+| `server.*` | `host` / `port` / `data_dir` / `heartbeat_s` / `interaction_timeout_s` / `run_ttl_s` / `warmup_on_start` / `keepalive_s` |
 
 > **护栏只靠约定，不是强制**：模型（或被提示注入的模型）仍可能去改这六类字段。要真正挡住见 §7.4。
 
@@ -327,7 +329,7 @@ tools:
 | **重启服务** | 停掉旧进程后 `python main.py`（读配置的 `server.host/port`，也可 `--host/--port` 覆盖） | 改 `server.host` / `server.port`（重载**不会**重新 bind）、`server.data_dir`（建 app 时装配）时必须用 |
 | **控制台开关** | 逐 server / 逐技能开关（`PATCH /mcp/{name}` / `PATCH /skills/{name}`） | 只是启停某一项，**热生效**，不需重载 |
 
-> 口径回顾：`llm.*` / `agent.*` / `session.*` / `skills.*` / `memory.*` / `tools.*` / `mcp.*` / `observability.*` 一律**重载或重启**；`server.heartbeat_s` / `server.interaction_timeout_s` / `server.run_ttl_s` **重载即可**。
+> 口径回顾：`llm.*` / `agent.*` / `session.*` / `skills.*` / `memory.*` / `tools.*` / `mcp.*` / `observability.*` 一律**重载或重启**；`server.heartbeat_s` / `server.interaction_timeout_s` / `server.run_ttl_s` / `server.warmup_on_start` / `server.keepalive_s` **重载即可**。
 
 ### 7.2 验证手段
 

@@ -133,13 +133,18 @@ python main.py          # 读 harness.yaml 的 server.host/port；--port / --rel
 MCP 连接发生在 lifespan：`await state.start()`（`build_state` 是同步的，
 因为测试用的 `httpx.ASGITransport` 不触发 lifespan）。
 
+lifespan 还负责模型连接的**预热 / 空闲保活**（`state.start_warmup()` / `state.start_keepalive()`）：
+启动时打一次 mini ping 建好连接池；`server.keepalive_s > 0` 时再按间隔、且**空闲（无活跃 run）**时继续保活。
+两项**默认关闭**，且只对**支持前缀缓存的 provider**才有实际收益——对不做缓存的 provider（如 agnes），
+其 TTFB 瓶颈在服务端 prefill + 排队，连接池那点收益会被淹没。预热失败静默。
+
 ## 内置控制台
 
 `server/static/index.html`，单文件、零依赖，与 API 同源（无需 CORS）。
 访问 `http://127.0.0.1:8000/ui/`；设计与交互细节见
 [前端控制台设计文档](../docs/frontend-console-design.md)。
 
-**三栏布局**：左侧会话列表（新建 / 搜索 / 双击重命名 / 运行中脉冲点），中间对话区
+**三栏布局**：左侧会话列表（新建 / 搜索 / 双击重命名 / 悬停项内「重命名 ✎ / 删除 ✕」按钮 / 运行中脉冲点），中间对话区
 （标题 / 权限 chips / 消息流 / 输入区），右侧 **8 标签抽屉**：
 
 | 标签 | 内容 | 主要端点 |

@@ -89,9 +89,12 @@ class MCPClient:
         elif cfg.transport in ("http", "streamable_http"):
             if not cfg.url:
                 raise ValueError(f"MCP server '{cfg.name}' 缺少 url")
-            read, write = await self._stack.enter_async_context(
+            # `streamable_http_client` 的返回值在不同 SDK 版本里可能是
+            # (read, write) 或 (read, write, get_session_id)——只取前两个，忽略其余。
+            entered = await self._stack.enter_async_context(
                 streamable_http_client(cfg.url)
             )
+            read, write = entered[0], entered[1]
         else:
             raise ValueError(f"不支持的 MCP 传输方式: {cfg.transport}")
 
