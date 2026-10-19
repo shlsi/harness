@@ -1,0 +1,46 @@
+# ---- 密钥与本地覆盖 ----
+# .env 放真实密钥（harness.yaml 里只写 ${OPENAI_API_KEY} 引用）；示例见 .env.example
+.env
+.env.local
+.env.*.local
+
+# 控制台写配置时的自动备份（harness/config/admin.py 落盘前生成）
+harness.yaml.bak
+harness.yaml.bak.*
+
+# ---- 运行期数据（会话日志 / 观测 span / 临时目录，可能含隐私内容）----
+data/
+
+# 长期记忆文件：本地积累，不随仓库走；若想共享记忆请删掉这一行
+MEMORY.md
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+
+# ---- 测试 / 缓存 / 覆盖率 ----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ---- 编辑器 / 操作系统 ----
+.idea/
+.vscode/
+.trae/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 日志 ----
+*.log

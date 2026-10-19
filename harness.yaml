@@ -1,0 +1,66 @@
+# 本文件由 harness 控制台生成/更新：注释与键序会被规范化，请勿手工排布。
+# 真实密钥请放在 .env，这里只写 ${VAR} 引用。
+llm:
+  model: agnes-3.0-flash
+  api_key: ${OPENAI_API_KEY}
+  base_url: https://api.agnes-ai.cn/v1
+  timeout_s: 60
+  max_retries: 2
+agent:
+  max_steps: 12
+  max_total_tokens: 200000
+  stream: true
+  repeat_warn_at: 3
+  repeat_stop_at: 6
+  base_instructions: ''
+session:
+  compact_threshold: 40
+  keep_head: 0
+  keep_tail: 16
+  enable_compaction: true
+  auto_title: true
+  title_max_chars: 24
+skills:
+  root: skills
+  max_body_chars: 60000
+memory:
+  enabled: true
+  path: MEMORY.md
+  max_chars: 4000
+  auto_extract: false
+tools:
+  enabled: []
+  disabled: []
+  policy:
+    enforce_scopes: true
+    approval_for_destructive: true
+  shell:
+    allowed_commands: []
+    deny_patterns: []
+  sandbox:
+    enabled: false
+    root: .
+    write_paths: []
+    deny_paths: []
+    readonly_mounts: []
+    writable_mounts: []
+    denied_domains: []
+  net:
+    max_bytes: 200000
+    max_download_bytes: 20000000
+mcp:
+  servers:
+    - name: parallel-search
+      transport: http
+      url: https://search.parallel.ai/mcp
+observability:
+  tracer_sink: jsonl
+  tracer_path: data/traces.jsonl
+  tracer_max_spans: 500
+server:
+  host: 127.0.0.1
+  port: 8000
+  data_dir: data/sessions
+  heartbeat_s: 15
+  interaction_timeout_s: 300
+  run_ttl_s: 600

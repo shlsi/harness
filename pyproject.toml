@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "harness"
+version = "0.1.0"
+description = "Agent 运行时框架（模型 ↔ 工具 ↔ 会话）与 FastAPI 服务层"
+readme = "AGENTS.md"
+requires-python = ">=3.10"
+
+# 运行时依赖：只列代码里直接 import 的包（传递依赖交给它们自己约束）。
+dependencies = [
+    # --- harness 核心 ---
+    "pydantic>=2.6",        # 工具入参建模（harness/tool/registry.py）
+    "jsonschema>=4.20",     # 外部工具入参校验（harness/tool/executor.py）
+    "PyYAML>=6.0",          # 配置系统 YAML 解析（harness/config/loader.py）
+    "openai>=1.40",         # 模型接入（harness/llm/openai_compat.py，需 stream_options）
+    "mcp>=2.0",             # MCP 外部工具接入（harness/tool/adapter/mcp.py）
+    # --- server 服务层 ---
+    "fastapi>=0.115",
+    "starlette>=0.37",      # server/errors.py 直接导入 HTTPException
+    "sse-starlette>=2.0",   # SSE 事件流（server/routes/run.py）
+    "uvicorn>=0.30",        # 启动入口
+]
+
+[project.optional-dependencies]
+# 测试：httpx 用于 ASGITransport 直连 app（server/test/test_api.py）
+test = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+]
+# 观测：把 span 导出到 Jaeger / Tempo 等（observability.tracer_sink: otel）
+otel = [
+    "opentelemetry-api>=1.27",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp-proto-http>=1.27",
+]
+
+[tool.setuptools.packages.find]
+include = ["harness*", "server*"]
+exclude = ["*.test", "*.test.*"]
+
+[tool.pytest.ini_options]
+# 测试全部离线，不需要网络；各模块也可用 python -m <module> 单独跑（自带 main()）。
+# 共享 fixture（进程级全局状态隔离、临时工作区）见仓库根 conftest.py。
+testpaths = ["harness", "server"]
+addopts = "-ra"                 # 结尾附上非通过用例的简要原因
